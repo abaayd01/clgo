@@ -1,0 +1,117 @@
+(ns ayden.clgo
+  (:gen-class)
+  (:require [ayden.utils :as utils]))
+
+(def player-sequence
+  "Generate an infinite lazy sequence for the player turns"
+  (cycle [:b :w]))
+
+(defn make-row [size]
+  (apply vector (repeat size nil)))
+
+(defn make-board [size]
+  (apply vector (repeat size (make-row size))))
+
+(defn board-symbol
+  [v]
+  (case v
+    nil "+"
+    :b  "@"
+    :w  "O"))
+
+(defn display-row
+  [row display-spacer?]
+  (let [r        (->> (map board-symbol row)
+                      (interpose "---")
+                      (reduce str))
+        r-spacer (->> (repeat (count row) "|")
+                      (interpose "   ")
+                      (reduce str))]
+    (println r)
+    (when display-spacer?
+      (println r-spacer))))
+
+(defn display-board
+  [board]
+  (doseq [[i row] (utils/indexed board)]
+    (display-row row (not= i (dec (count board)))))
+  board)
+
+(def init-board
+  (make-board 5))
+
+;; point methods
+(defn isa-point?
+  [point]
+  (when (and (= (count point) 2)
+             (every? int? point))
+    true))
+
+;; board methods
+(defn value-at-point
+  [board point]
+  (get-in board point))
+
+(defn set-value-at-point
+  [board point v]
+  (assoc-in board point v))
+
+(defn point-on-board?
+  [board point]
+  (let [board-size (count board)]
+    (every? #(and (>= % 0) (< % board-size)) point)))
+
+;; game methods
+(defn parse-point-input
+  [s]
+  (try
+    (let [val (->> (clojure.string/split s #" ")
+                   (map #(Integer/parseInt %))
+                   (into []))]
+      (if (isa-point? val)
+        val
+        nil))
+    (catch Exception e nil)))
+
+(defn get-input
+  [board]
+  (let [raw-input (read-line)]
+    (if (#{"q" "quit" "pass" "resign"} raw-input)
+      (keyword raw-input)
+      (let [point (parse-point-input raw-input)]
+        (cond
+          (nil? point)                        (do (println "invalid input, try again.")
+                                                  (get-input board))
+          (not (point-on-board? board point)) (do (println "invalid input, point not on board.")
+                                                  (get-input board))
+          (value-at-point board point)        (do (println "invalid input, point already taken.")
+                                                  (get-input board))
+          :else                               point)))))
+
+(defn apply-move
+  [board point player]
+  (set-value-at-point board point player))
+
+(defn play-game
+  "The game loop.
+  We iterate through the player sequence (alternate player turns)
+  until there is a winner or the board is full."
+  [starting-board player-sequence]
+  (loop [board           starting-board
+         player-sequence player-sequence]
+    (println "Current Turn:" (first player-sequence))
+    (println "Current board:")
+    (display-board board)
+    (let [input  (get-input board)
+          player (first player-sequence)]
+      (cond
+        (#{:quit :q} input) (println "exiting...\n")
+        (#{:pass} input)    (do (println "passing...\n")
+                                (recur board (rest player-sequence)))
+        (#{:resign} input)  (println "player" player "resigned!\n")
+        (some? input)       (do (println "point: " input "\n")
+                                (recur (apply-move board input player)
+                                       (rest player-sequence)))
+        :else               (println "something went wrong...exiting...\n")))))
+
+(play-game init-board player-sequence)
